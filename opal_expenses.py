@@ -10,6 +10,35 @@
 # Dependencies:
 #   Python 2.6/2.7
 #   pip: PDFMiner
+#   pip: xlwt
+# 
+# Additional info:
+#	The CsvConverterClass was excerpted from https://stackoverflow.com/questions/36902496/python-pdfminer-pdf-to-csv, which was originaly developed by https://stackoverflow.com/users/64206/tgray. The class was mostly maintained as the original version, with minor changes.
+#
+# Version: 1
+#
+
+WEEK_DAYS = ['Sun ', 'Mon ', 'Tue ', 'Wed ', 'Thu ', 'Fri ', 'Sat ']
+SHIFTER = {'sun': WEEK_DAYS[0:5],
+           'mon': WEEK_DAYS[1:6],
+           'tue': WEEK_DAYS[2:7]}
+           
+def sanitize():
+    '''
+    Sanitize the input
+
+    @param None
+    @return lst of arguments
+    '''
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", help="apply manual/automatic filter",
+                        default="auto", choices=['auto', 'manual', 'both'])
+    parser.add_argument("--shift", help="day when shift starts",
+                        default="mon", choices=['sun', 'mon', 'tue'])
+    parser.add_argument("--input", help="OPAL .pdf file", required=True)
+    args = parser.parse_args()
+    return args
 
 def pdf_to_csv(filename, separator, threshold):
     from cStringIO import StringIO
@@ -65,53 +94,51 @@ def pdf_to_csv(filename, separator, threshold):
 
     interpreter = PDFPageInterpreter(rsrc, device)
     for i, page in enumerate(PDFPage.get_pages(fp)):
-        ###outfp.write("START PAGE %d\n" % i)
         if page is not None:
-            ###print 'none'
             interpreter.process_page(page)
-        ###outfp.write("END PAGE %d\n" % i)
 
     device.close()
     fp.close()
 
     return outfp.getvalue()
 
-def opal_formater():
+# This function receives data from pdf_to_csv fuction, parsers the relevant lines and formats the output
+def opal_formater(input_file):
     try:
         from cStringIO import StringIO
     except:
         from StringIO import StringIO
     import re
-    csv_raw_data = pdf_to_csv('OPAL_05-2018.pdf', separator, threshold)
+    # Calls the pdf_to_csv function and receives the opal report data. Separator is ',', threshold is the size of each column
+    csv_raw_data = pdf_to_csv(input_file, separator, threshold)
+    # StringIO reads the long string from the pdf_to_csv and allow read lines from it as if it was a file
     csv_data = StringIO(csv_raw_data)
     for csv_raw_line in csv_data.readlines():
+        # readlines is stupid and adds unnecessary new-line escapes (\n), so we'll rstrip it to avoid blank lines
         csv_line = csv_raw_line.rstrip()
-        if len(csv_line) > 3 and csv_line[0].isdigit():
+        if len(csv_line) > 3 and csv_line[0].isdigit() and csv_line[1].isdigit():
             # print csv_line #Worked!
-            ###regex the lines that starts with digits
+            ###regex the lines that starts with any date format, I guess(??)
             date_regex = '^(3[01]|[12][0-9]|0?[1-9])/(1[0-2]|0?[1-9])/(?:[0-9]{2})?[0-9]{2}'
             if re.match (date_regex, csv_line):
+                # if matches, we'll split the lines and add two "," in order do shift the line two rows to de right on excel
                 separated_csv_line = csv_line.split(',')
                 complete_csv_line = ''
                 for separated_item in separated_csv_line:
                     complete_csv_line = complete_csv_line+","+separated_item+","
                 csv_line = complete_csv_line
+            # Print the lines that doesn't starts with a date
             print csv_line
-    #        ###if re.findall("i(?:[-/\s+](1[0-9]\d\d|20[0-2][0-5]))?", printable_line):
-    #        if re.findall("[??\/??\/??]", csv_line):
-    #            separated_line=csv_line.split(",")
-    #            new_printable_line=''
-    #            for item in separated_line:
-    #                new_printable_line=new_printable_line+","+item+","
-    #                print new_printable_line.rstrip('\n')
-    #            else: 
-    #                print csv_line.rstrip('\n')
 
 if __name__ == '__main__':
     # the separator to use with the CSV
     separator = ','
     # the distance multiplier after which a character is considered part of a new word/column/block. Usually 1.5 works quite well
     threshold = 2
-    #print pdf_to_csv('myLovelyFile.pdf', separator, threshold)
-    #print pdf_to_csv('OPAL_05-2018.pdf', separator, threshold)
-    opal_formater()
+    # Sanitize args, from Andrea
+    args = sanitize()
+    mode = args.mode.lower()
+    shift = SHIFTER[args.shift.lower()]
+    src_file = args.input
+    # Call the formater function passing the input file
+    opal_formater(args.input)
