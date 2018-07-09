@@ -11,7 +11,7 @@
 #   Python 2.6/2.7
 #   pip: PDFMiner
 #   pip: xlwt
-# 
+#
 # Additional info:
 #	The CsvConverterClass was excerpted from https://stackoverflow.com/questions/36902496/python-pdfminer-pdf-to-csv, which was originaly developed by https://stackoverflow.com/users/64206/tgray. The class was mostly maintained as the original version, with minor changes.
 #
@@ -22,7 +22,7 @@ WEEK_DAYS = ['Sun ', 'Mon ', 'Tue ', 'Wed ', 'Thu ', 'Fri ', 'Sat ']
 SHIFTER = {'sun': WEEK_DAYS[0:5],
            'mon': WEEK_DAYS[1:6],
            'tue': WEEK_DAYS[2:7]}
-           
+
 def sanitize():
     '''
     Sanitize the input
@@ -44,11 +44,11 @@ def openFileBrowser():
     from Tkinter import Tk
     import Tkinter, Tkconstants, tkFileDialog
     from Tkinter import Entry, Button, Label, StringVar
-    
-    #opalFileName=''
+    # Create the TK window
     window = Tk()
     window.title("OPAL Expenses PDF importer")
     window.geometry('765x400')
+    window.minsize(width=756, height=400)
     textField=Label(window,width=13,anchor="w",borderwidth=1,text="OPAL expense file:")
     textField.grid(column=1,row=0)
     filenameFieldText=StringVar()
@@ -58,17 +58,12 @@ def openFileBrowser():
     def pdfFileBrowse_func():
         global opalFileName
         opalFileName = tkFileDialog.askopenfilename(initialdir = "root", title = "Select Opal PDF report file",filetypes = (("PDF Files", "*.pdf"),("All files", "*.*")))
-        #filenameField.configure(width=60,anchor="w",borderwidth=1,text=opalFileName)
         filenameFieldText.set(opalFileName)
-        #opal_formater(window.filename)
     filenameBrowseButton=Button(window, text="Open PDF", command=pdfFileBrowse_func)
     filenameBrowseButton.grid(column=3,row=0)
     def processFileName_func():
-        #if opalFileName != '':
         try:
             opal_formater(opalFileName)
-        #else:
-            #filenameField.configure(width=90,anchor="w",borderwidth=1,text="Select a file to process")
         except:
             filenameFieldText.set("Select a file to process")
     processFileButton=Button(window,text="Process",command=processFileName_func)
@@ -144,6 +139,20 @@ def opal_formater(input_file):
     except:
         from StringIO import StringIO
     import re
+    date_regex = '^(3[01]|[12][0-9]|0?[1-9])/(1[0-2]|0?[1-9])/(?:[0-9]{2})?[0-9]{2}'
+    transactionId = '([0-9]{3,5})'
+    transactionWeekDay = '([Mm]on|[Tt]ue|[[Ww]ed|[Tt]hu|[Ff]ri|[Ss]at|[Ss]un)'
+    transactionTime = '([0-1][0-9]:[0-5][0-9])'
+    transactionLocation = '\D[A-Za-z]+\s*'
+    transactionJourneyNumber = '[1-99]{2}'
+    transactionFareApplied = 'Travel Reward|Off-peak'
+    transactionFareApplied_value=False
+    transactionFullFare = '[0-9]{1,3}\.[0-9]{2}'
+    transactionFullFare_value=False
+    transactionDiscount = '[0-9]{1,3}\.[0-9]{2}'
+    transactionDiscount_value=False
+    transactionAmount = '[0-9]{1,3}\.[0-9]{2}'
+    transactionAmount_value=False
     # Calls the pdf_to_csv function and receives the opal report data. Separator is ',', threshold is the size of each column
     csv_raw_data = pdf_to_csv(input_file, separator, threshold)
     # StringIO reads the long string from the pdf_to_csv and allow read lines from it as if it was a file
@@ -154,16 +163,52 @@ def opal_formater(input_file):
         if len(csv_line) > 3 and csv_line[0].isdigit() and csv_line[1].isdigit():
             # print csv_line #Worked!
             ###regex the lines that starts with any date format, I guess(??)
-            date_regex = '^(3[01]|[12][0-9]|0?[1-9])/(1[0-2]|0?[1-9])/(?:[0-9]{2})?[0-9]{2}'
+            if re.match(transactionId, csv_line):
+                separated_csv_line = csv_line.split(',')
+                for separated_item in separated_csv_line:
+                    if re.match(transactionId, separated_item):
+                        transactionId_value = separated_item
+                        #print transactionId_value
+                    if re.match(transactionWeekDay, separated_item):
+                        transactionWeekDay_value = separated_item
+                        #print transactionWeekDay_value
+                    if re.match(transactionTime, separated_item):
+                        transactionTime_value = separated_item
+                    if re.match(transactionLocation, separated_item):
+                        transactionOrigin_value = separated_item
+                    if re.match(transactionJourneyNumber, separated_item):
+                        transactionJourneyNumber_value = separated_item
+                    if re.match(transactionFareApplied, separated_item):
+                        transactionFareApplied_value = separated_item
+                    if re.match(transactionFullFare, separated_item) and not transactionFullFare_value and not transactionDiscount_value and not transactionAmount_value:
+                        transactionFullFare_value = separated_item
+                    else:
+                        if transactionFullFare_value and not transactionDiscount_value and re.match(transactionDiscount, separated_item) and not transactionAmount_value:
+                             transactionDiscount_value = separated_item
+                        else:
+                            if transactionFullFare_value and transactionDiscount_value and re.match(transactionAmount, separated_item) and not transactionAmount_value:
+                                transactionAmount_value = separated_item
+
             if re.match (date_regex, csv_line):
                 # if matches, we'll split the lines and add two "," in order do shift the line two rows to de right on excel
                 separated_csv_line = csv_line.split(',')
                 complete_csv_line = ''
                 for separated_item in separated_csv_line:
-                    complete_csv_line = complete_csv_line+","+separated_item+","
-                csv_line = complete_csv_line
+                    if re.match(date_regex, separated_item):
+                        transactionDate_value = separated_item
+                        #print transactionDate_value
+                    if re.match(transactionLocation, separated_item):
+                        transactionDestination_value = separated_item
+                    #complete_csv_line = complete_csv_line+","+separated_item+","
+                #csv_line = complete_csv_line
+                #print csv_line
+                    #print separated_item
             # Print the lines that doesn't starts with a date
-            print csv_line
+            #else:
+                #print csv_line
+                if not transactionFareApplied_value:
+                    transactionFareApplied_value = "N/A"
+                print "%s %s %s %s %s %s %s %s %s %s" % (transactionId_value, transactionWeekDay_value, transactionDate_value, transactionTime_value, transactionOrigin_value, transactionDestination_value, transactionFareApplied_value, transactionFullFare_value, transactionDiscount_value, transactionAmount_value)
 
 if __name__ == '__main__':
     # the separator to use with the CSV
@@ -175,9 +220,6 @@ if __name__ == '__main__':
     #mode = args.mode.lower()
     #shift = SHIFTER[args.shift.lower()]
     #src_file = args.input
-    # Call the formater function passing the input file
-    #opal_formater(args.input)
-    #try:
-    openFileBrowser()
-    #except:
-    #    print "Canceled"
+    opal_filename="/Users/gmatheus/Documents/Personal/Expenses/OPAL_05-2018.pdf"
+    opal_formater(opal_filename)
+    #openFileBrowser()
